@@ -107,6 +107,20 @@ class FeedForward(nn.Module):
     def forward(self, x):
         return self.net(x)
 
+class Block(nn.Module):
+    """Transformer block: communication followed by computation """
+    def __init__(self, n_embed, n_head):
+        # n_embed: embedding dimension, n_head: the number of heads we'd like
+        super().__init__()
+        head_size = n_embed // n_head 
+        self.sa = MultiHeadAttention(n_head, head_size)
+        self.ffwd = FeedForward(n_embed)
+
+    def forward(self, x):
+        x = self.sa(x)
+        x = self.ffwd(x)
+        return x 
+
 
 class BigramLanguageModel(nn.Module):
 
@@ -118,14 +132,12 @@ class BigramLanguageModel(nn.Module):
         # we also want to encode the position of the tokens 
         # each position from 0 to block_size - 1 will also get its own embedding vector 
         self.position_embedding_table = nn.Embedding(block_size, n_embed) 
-        # now instead of having 1 head of attention, we now have 4
-        # aka, 4 communication channels in parallel, and each communicaton channels 
-        # will be smaller correspondingly(OG dim: 32, new dim: 32/4=8, concats to get 32)
-        # similar to group convolution 
-        self.sa_heads = MultiHeadAttention(4, n_embed//4); 
-
-        # now, initialize the feedforward Neural Network to allow the tokens to "think"
-        self.ffwd = FeedForward(n_embed)
+        # Now, we create put together multiple identical blocks structures that computes self-attention + Feedforward network
+        self.blocks = nn.Sequential(
+            Block(n_embed, n_head=4),
+            Block(n_embed, n_head=4),
+            Block(n_embed, n_head=4),
+        )
 
         # We don't want to go directly from embedding to logits  
         # to go from token embedding to logits, we are adding a linear layer
@@ -146,12 +158,9 @@ class BigramLanguageModel(nn.Module):
         # now x not only holds the token identities, but also the positions at which these tokens occur
         x = tok_emb + pos_emb # (B, T, C)
 
-        # now compute that 4 heads of self-attention after encoding token + position embeddings 
-        x = self.sa_heads(x)
+        # now replace this with calling the blocks, which performs multiple SA_heads + feedforward networks
+        x = self.blocks(x) 
 
-        # now pass it through the feedforward network
-        x = self.ffwd(x) # (B, T, C)
-        
         # now output goes to the decoder and create the logits 
         logits = self.lm_head(x) # (B, T, vocab_size)
         if targets == None:
