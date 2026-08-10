@@ -92,17 +92,23 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         # creating multiple heads and run them in parallel in a list 
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
+        # defines a projection, which is just a LT from the outcome of this layer 
+        self.proj = nn.Linear(num_heads * head_size, n_embed)
     def forward(self, x):
-        # concat their outputs over the channel dims 
-        return torch.cat([h(x) for h in self.heads], dim=-1)
+        # output from self-attention itself
+        out = torch.cat([h(x) for h in self.heads], dim=-1)
+        # applies the projection after computing self-attention
+        out = self.proj(out)
+        return out 
 
 class FeedForward(nn.Module):
     """A simple linear layer followed by a non-linearity"""
     def __init__(self, n_embed):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(n_embed, n_embed),
+            nn.Linear(n_embed, 4 * n_embed), # growing the layer in the residual pathway 
             nn.ReLU(),
+            nn.Linear(4 * n_embed, n_embed), # the projection layer going back to the residual pathway 
         )
     def forward(self, x):
         return self.net(x)
@@ -117,8 +123,8 @@ class Block(nn.Module):
         self.ffwd = FeedForward(n_embed)
 
     def forward(self, x):
-        x = self.sa(x)
-        x = self.ffwd(x)
+        x = x + self.sa(x)
+        x = x +  self.ffwd(x)
         return x 
 
 
