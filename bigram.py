@@ -2,13 +2,16 @@ import torch
 import torch.nn as nn 
 from torch.nn import functional as F
 
-block_size = 8 # how big is each sample
-batch_size = 32 # how many sample to draw
+block_size = 256 # how big is each sample
+batch_size = 64 # how many sample to draw
 eval_iters = 200 # during estimate loss, how many batches do we use
-learning_rate = 1e-3 # how big are the steps we take during training using back prop
+learning_rate = 3e-4 # how big are the steps we take during training using back prop
 eval_interval = 300 # interval in which we stop and calculate loss 
 max_iters = 5000 # how many times to run the training loop
-n_embed = 32 # short for number of embedding dims
+n_embed = 384 # short for number of embedding dims
+n_head = 6 # 6 heads, and 384/6= 64 dim per head 
+n_layer = 6 # 6 layers of that 
+dropout = 0.2 # every forward & backward pass there's 20% of intermediate calculations are disabled and dropped to 0
 # head_size = 16 # defines how big each attention head is
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -71,6 +74,8 @@ class Head(nn.Module):
         # Tril isn't a variable in Pytorch, it's a variable. assigned to the module using register_buffer
         self.register_buffer('tril', torch.tril(torch.ones(block_size, block_size)))
 
+        self.dropout = nn.Dropout(dropout)
+
     def forward(self, x):
         B, T, C = x.shape
         k = self.key(x)
@@ -80,6 +85,7 @@ class Head(nn.Module):
         # self-attention part that only looks back --> masking with tril
         wei = wei.masked_fill(self.tril[:T, :T] == 0, float('-inf')) # (B, T, T)
         wei = F.softmax(wei, dim=-1)
+        wei = self.dropout(wei)
         # performs the weighted aggregation of the values 
         v = self.value(x) # (B, T, C)
         out = wei @ v # (B, T, T) @ (B, T, C) --> (B, T, C)
@@ -94,6 +100,7 @@ class MultiHeadAttention(nn.Module):
         self.heads = nn.ModuleList([Head(head_size) for _ in range(num_heads)])
         # defines a projection, which is just a LT from the outcome of this layer 
         self.proj = nn.Linear(num_heads * head_size, n_embed)
+        self.dropout = nn.Dropout(dropout)
     def forward(self, x):
         # output from self-attention itself
         out = torch.cat([h(x) for h in self.heads], dim=-1)
@@ -109,6 +116,7 @@ class FeedForward(nn.Module):
             nn.Linear(n_embed, 4 * n_embed), # growing the layer in the residual pathway 
             nn.ReLU(),
             nn.Linear(4 * n_embed, n_embed), # the projection layer going back to the residual pathway 
+            nn.Dropout(dropout), # add right before residual connection back into the pathway 
         )
     def forward(self, x):
         return self.net(x)
@@ -141,13 +149,9 @@ class BigramLanguageModel(nn.Module):
         # each position from 0 to block_size - 1 will also get its own embedding vector 
         self.position_embedding_table = nn.Embedding(block_size, n_embed) 
         # Now, we create put together multiple identical blocks structures that computes self-attention + Feedforward network
-        self.blocks = nn.Sequential(
-            Block(n_embed, n_head=4),
-            Block(n_embed, n_head=4),
-            Block(n_embed, n_head=4),
-            nn.LayerNorm(n_embed), # 1 last layernorm at end of transformer right before the final linear layer that goes to vocab
-        )
-
+        # this allows us to easily define the number of layers and blocks that we're going to have 
+        self.blocks = nn.Sequential(*[Block(n_embed, n_head=n_head) for _ in range(n_layer)]) 
+        self.ln_f = nn.LayerNorm(n_embed)
         # We don't want to go directly from embedding to logits  
         # to go from token embedding to logits, we are adding a linear layer
         self.lm_head = nn.Linear(n_embed, vocab_size) # lm_head = language model head 
