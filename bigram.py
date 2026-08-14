@@ -121,10 +121,12 @@ class Block(nn.Module):
         head_size = n_embed // n_head 
         self.sa = MultiHeadAttention(n_head, head_size)
         self.ffwd = FeedForward(n_embed)
+        self.ln1 = nn.LayerNorm(n_embed) # the mean + variance is taken over 32 numbers 
+        self.ln2 = nn.LayerNorm(n_embed)
 
     def forward(self, x):
-        x = x + self.sa(x)
-        x = x +  self.ffwd(x)
+        x = x + self.sa(self.ln1(x)) # the layernorm is applied on x
+        x = x + self.ffwd(self.ln2(x)) # applies on x before it goes through the ffwd network 
         return x 
 
 
@@ -143,6 +145,7 @@ class BigramLanguageModel(nn.Module):
             Block(n_embed, n_head=4),
             Block(n_embed, n_head=4),
             Block(n_embed, n_head=4),
+            nn.LayerNorm(n_embed), # 1 last layernorm at end of transformer right before the final linear layer that goes to vocab
         )
 
         # We don't want to go directly from embedding to logits  
