@@ -7,7 +7,7 @@ batch_size = 64 # how many sample to draw
 eval_iters = 200 # during estimate loss, how many batches do we use
 learning_rate = 3e-4 # how big are the steps we take during training using back prop
 eval_interval = 300 # interval in which we stop and calculate loss 
-max_iters = 5000 # how many times to run the training loop
+max_iters = 2700 # how many times to run the training loop
 n_embed = 384 # short for number of embedding dims
 n_head = 6 # 6 heads, and 384/6= 64 dim per head 
 n_layer = 6 # 6 layers of that 
@@ -15,54 +15,54 @@ dropout = 0.2 # every forward & backward pass there's 20% of intermediate calcul
 # head_size = 16 # defines how big each attention head is
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-print("device: ", device)
+vocab_size = None
+stoi = {}
+itos = {}
 
-torch.manual_seed(1337)
+def encode(s):
+    return [stoi[c] for c in s]
 
-with open('input.txt', 'r', encoding='utf-8') as f:
-    text = f.read()
+def decode(l):
+    return "".join([itos[i] for i in l])
 
-chars = sorted(list(set(text)))
-vocab_size = len(chars)
+def save_checkpoint(model, path='model.pt'):
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'stoi': stoi,
+        'itos': itos,
+        'vocab_size': vocab_size,
+        'block_size': block_size,
+        'n_embed': n_embed,
+        'n_head': n_head,
+        'n_layer': n_layer,
+        'dropout': dropout,
+    }
+    torch.save(checkpoint, path)
+    print(f"Saved model to {path}")
 
-# tokenizer
-stoi = { ch:i for i,ch in enumerate(chars) }
-itos = { i:ch for i,ch in enumerate(chars) }
+def load_checkpoint(path='model.pt', map_device=None):
+    global block_size, n_embed, n_head, n_layer, dropout, vocab_size, stoi, itos, device
 
-encode = lambda s: [stoi[c] for c in s]
-decode = lambda l: "".join([itos[i] for i in l])
+    if map_device is None:
+        map_device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = map_device
 
-# train test splits 
-data = torch.tensor(encode(text), dtype=torch.long)
-n = int(0.9*len(data)) 
-train_data = data[:n]
-val_data = data[n:]
+    checkpoint = torch.load(path, map_location=map_device, weights_only=False)
 
-def get_batch(split):
-    data = train_data if split == 'train' else val_data 
-    index = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([data[i:i+block_size] for i in index])
-    y = torch.stack([data[i+1:i+block_size+1] for i in index])
-    x, y = x.to(device), y.to(device)
-    return x, y
+    block_size = checkpoint['block_size']
+    n_embed = checkpoint['n_embed']
+    n_head = checkpoint['n_head']
+    n_layer = checkpoint['n_layer']
+    dropout = checkpoint['dropout']
+    vocab_size = checkpoint['vocab_size']
+    stoi = checkpoint['stoi']
+    itos = checkpoint['itos']
 
-# get less noisey loss by getting the average loss over eval_iters number of batches for 
-# both train and test splits 
-# optimization that tells pytorch that everything inside this function won't call .backwards
-# so pytorch can be more efficient 
-@torch.no_grad() 
-def estimate_loss():
-    out = {}
-    model.eval() # setting model to be in evaluation phase 
-    for split in ['train', 'val']:
-        losses = torch.zeros(eval_iters) # initialize this tensor, which will store all the losses 
-        for k in range(eval_iters):
-            x, y = get_batch(split)
-            logits, loss = model(x, y) # evaluate loss from the model
-            losses[k] = loss.item() 
-        out[split] = losses.mean()
-    model.train() # setting the model back in training phase 
-    return out
+    model = BigramLanguageModel()
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.to(device)
+    model.eval()
+    return model
 
 class Head(nn.Module):
 
@@ -210,30 +210,65 @@ class BigramLanguageModel(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)
         return idx 
 
-model = BigramLanguageModel() # initialize the model, which calls __init__
-m = model.to(device) # loads the model into GPU, will also move the model weights
-# in this case, it would be nn.Embedding 
+if __name__ == '__main__':
+    print("device: ", device)
 
-# creates a PyTorch optimizer 
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+    torch.manual_seed(1337)
 
-# training loop
-for iter in range(max_iters):
+    with open('input.txt', 'r', encoding='utf-8') as f:
+        text = f.read()
 
-    # evaluate the loss every once in a while
-    if iter % eval_interval == 0:
-        losses = estimate_loss()
-        print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+    chars = sorted(list(set(text)))
+    vocab_size = len(chars)
 
-    # sample a batch of data
-    xb, yb = get_batch("train")
+    stoi = { ch:i for i,ch in enumerate(chars) }
+    itos = { i:ch for i,ch in enumerate(chars) }
 
-    # evaluate the loss
-    logits, loss = model(xb, yb)
-    optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    optimizer.step()
+    data = torch.tensor(encode(text), dtype=torch.long)
+    n = int(0.9*len(data))
+    train_data = data[:n]
+    val_data = data[n:]
 
-# generate from the model 
-context = torch.zeros((1,1), dtype=torch.long, device=device) # starter token
-print(decode(m.generate(context, max_new_tokens=100)[0].tolist()))
+    def get_batch(split):
+        data = train_data if split == 'train' else val_data
+        index = torch.randint(len(data) - block_size, (batch_size,))
+        x = torch.stack([data[i:i+block_size] for i in index])
+        y = torch.stack([data[i+1:i+block_size+1] for i in index])
+        x, y = x.to(device), y.to(device)
+        return x, y
+
+    @torch.no_grad()
+    def estimate_loss():
+        out = {}
+        model.eval()
+        for split in ['train', 'val']:
+            losses = torch.zeros(eval_iters)
+            for k in range(eval_iters):
+                x, y = get_batch(split)
+                logits, loss = model(x, y)
+                losses[k] = loss.item()
+            out[split] = losses.mean()
+        model.train()
+        return out
+
+    model = BigramLanguageModel()
+    model = model.to(device)
+
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+
+    for iter in range(max_iters):
+        if iter % eval_interval == 0:
+            losses = estimate_loss()
+            print(f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
+
+        xb, yb = get_batch("train")
+
+        logits, loss = model(xb, yb)
+        optimizer.zero_grad(set_to_none=True)
+        loss.backward()
+        optimizer.step()
+
+    save_checkpoint(model)
+
+    context = torch.zeros((1, 1), dtype=torch.long, device=device)
+    print(decode(model.generate(context, max_new_tokens=100)[0].tolist()))
