@@ -1,5 +1,5 @@
 # Intro
-Have thee ever woke up and decided thee wanted to write your own Shakespearean play? Well, I did! However, I realized that I am not an English Studies major, so I decided to learn transformer architecture from scratch and train my own model to do it instead. I've scrapped all Shakespear plays from https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt and trained a decoder-only, causal Transformer language model. It includes
+Have thee ever woken up and decided thee wanted to write your own Shakespearean play? Well, I did! However, I realized that I am not an English Studies major, so I decided to learn transformer architecture from scratch and train my own model to do it instead. I've scraped Tiny Shakespeare, a subset of Shakespeare's plays, from https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt and trained a decoder-only, causal Transformer language model. It includes
 1. Positional embedding
 2. Multi-head causal self-attention
 3. Feedforward layers
@@ -24,32 +24,33 @@ My lord says I do bid this traitor is prince?
 ```
 
 # Scripts Explained
-1. `bigram.py` has everything that's needed to train the model. It defines model architecture, and provides many nobs to tune. The parameters, such as `learning_rate`, `max_iters`, and `eval_interval` are defined at the top of the file. After training has been completed, it also saves the model weights and information using `torch.save()` To train the model, simply run 
+1. `bigram.py` has everything that's needed to train the model. It defines model architecture, and provides many knobs to tune. The parameters, such as `learning_rate`, `max_iters`, and `eval_interval` are defined at the top of the file. After training has been completed, it also saves the model weights and information using `torch.save()`. To train the model, simply run 
+```bash
+python3 bigram.py
+```
+2. `generate.py` provides a way to run inference on our trained model. Running the following command loads the `model.pt` checkpoint from the current directory by default, and auto-regressively generates a response. With no prompt, generation starts from a single zero token, and the default limit is 500 tokens.
 ```bash
 python3 generate.py
 ```
-2. `generate.py` provides a way to run inference on our trained model. It loads in `model.pt` from the specified directory(default is the current directory), and auto-regressively generate responses. 
-```bash
-python3 generate.py
-```
-Generates response with default inputs, aka no context and 500 tokens as the limit.
+
+The following command generates a 2000 token response with a starter context of "ROMEO:". The result of this generation is stored in `output-romeo.txt`.
 
 ```bash
 python3 generate.py --prompt="ROMEO:" --max-new-tokens=2000 > output-romeo.txt
 ```
-Generates a 2000 token response with a starter context of "ROMEO:". The result of this generation is stored in `output-romeo.txt`.
 
-3. `gpt-dev.ipynb` my learning sadbox. You can see me play with different things along the way! 
 
-4. `input.txt` the downloaded Shakesphere and used as training data 
+3. `gpt-dev.ipynb` is my learning sandbox. You can see me play with different things along the way! 
+
+4. `input.txt` is the downloaded Tiny Shakespeare text used as training data 
 
 5. `output1.txt` generated output using command `python3 generate.py --max-new-tokens=2000 > output1.txt`
 
 6. `output-juliet.txt` generated output using command `python3 generate.py --prompt="JULIET:" --max-new-tokens=2000 > output-juliet.txt`
 
-7. `output-romeo.txt` generated output using ocmmand `python3 generate.py --prompt="ROMEO:" --max-new-tokens=2000 > output-romeo.txt`
+7. `output-romeo.txt` generated output using command `python3 generate.py --prompt="ROMEO:" --max-new-tokens=2000 > output-romeo.txt`
 
-# Interation Process and Progress at Each Step
+# Iteration Process and Progress at Each Step
 ### After implementing Single-head attention
 Commit Hash: [`a8c958979b39d3acff09d57dbf08a205bab539c3`](https://github.com/YanfuOu/gpt-from-scratch/commit/a8c958979b39d3acff09d57dbf08a205bab539c3)
 With 1 single head of attention, the current output looks like this: 
@@ -70,7 +71,7 @@ Looks slightly better than before, which was almost just randomness. However, we
 
 ### After implementing Multi-head attention
 Commit hash: [`f8861c611f38e82398223cb2ead02475fc2e7be2`](https://github.com/YanfuOu/gpt-from-scratch/commit/f8861c611f38e82398223cb2ead02475fc2e7be2#diff-183ef79fe759403d45b96c87142f4d991ab0ac5b3694cb146533c6bbc9d445b9)
-After implementing 4 heads of self-attention, the current ouput looks like this: 
+After implementing 4 heads of self-attention, the current output looks like this: 
 ```
 Wher?
 
@@ -81,7 +82,7 @@ Fedilthoate
 ```
 step 4800: train loss 2.2319, val loss 2.2670
 
-Looks slightly better than before, and you can kind of pick out some words. Val loss now down to 2.27 from 2.40, which is a lot better! It helps to have multiple communication channels because these tokens have a lot to talk about. For example, they wanted to find the consonants, the vowls, or vowls from certain positions. Helps to create multiple independent channels of communication, gather lots of different types of data, and gather the output. 
+Looks slightly better than before, and you can kind of pick out some words. Val loss now down to 2.27 from 2.40, which is a lot better! It helps to have multiple communication channels because these tokens have a lot to talk about. For example, they wanted to find the consonants, the vowels, or vowels from certain positions. Helps to create multiple independent channels of communication, gather lots of different types of data, and gather the output. 
 
 ### After implementing Feedforward Network
 Commit hash: [`38e30169bc5c3ca01ff10a8e4b3e1d3f98a90f81`](https://github.com/YanfuOu/gpt-from-scratch/commit/38e30169bc5c3ca01ff10a8e4b3e1d3f98a90f81)
@@ -94,11 +95,11 @@ Warthie us him totbar dilacomoe
 ```
 step 4800: train loss 2.2105, val loss 2.2290
 
-Looks better than before by a bit. Val now down to 2.23 from 2.27, which is pretty good improvement! It helps to have feedforward network because it allows the tokens to think after communication(self-attention). The ReLu seperate the FeedForward layers and allows each layer to derive its meaning. 
+Looks better than before by a bit. Val now down to 2.23 from 2.27, which is pretty good improvement! It helps to have feedforward network because it allows the tokens to think after communication(self-attention). The ReLU separates the FeedForward layers and allows each layer to derive its meaning. 
 
 ### After implementing transformer block
 Commit hash: [`13c1a313de3285b27e74a7f5c31ecbe8f5974153`](https://github.com/YanfuOu/gpt-from-scratch/commit/13c1a313de3285b27e74a7f5c31ecbe8f5974153)
-After combining self-attention and feedforward block into a single repeatable transformer block, and training with 4 transformer blocks: 
+After combining self-attention and feedforward block into a single repeatable transformer block, and training with 3 transformer blocks: 
 ```
 Whent if try cowind, is sorst mas set bobe dowtarth ther mealceanss:
 Want he uw crorvet?
@@ -107,7 +108,7 @@ MIXlassate
 ```
 step 4800: train loss 2.3298, val loss 2.3565
 
-Doesn't give a good result. If anything, it actually increased the tran and val losses! Why? We're starting to build a pretty deep neural network, and they suffer from optimization issues. There are 2 optimizations that can help with the depth of the network and ensure that they remain optimizable 
+Doesn't give a good result. If anything, it actually increased the train and val losses! Why? We're starting to build a pretty deep neural network, and they suffer from optimization issues. There are 2 optimizations that can help with the depth of the network and ensure that they remain optimizable 
 1. Skip/residual connections(the "Add block")
   - That means you have transformed the data, but still have a skip/residual connection from the previous features
 2. Layer normalization(the "Norm block")
@@ -125,7 +126,7 @@ Wedilthoate
 ```
 
 step 4800: train loss 1.9866, val loss 2.0779
-We can see that the tran loss is getting ahead of the val loss. This means we're seeing a bit of overfitting. Our generation isn't amazing, but we can make out different words, like "throw", "and", "ours" etc. Our val loss is down to 2.077, which is pretty good! 
+We can see that the train loss is getting ahead of the val loss. This means we're seeing a bit of overfitting. Our generation isn't amazing, but we can make out different words, like "throw", "and", "ours" etc. Our val loss is down to 2.077, which is pretty good! 
 
 ### After implementing LayerNorm
 Commit hash: [`eb4808f7c9d7fda2091b1c98174844194963b9c5`](https://github.com/YanfuOu/gpt-from-scratch/commit/eb4808f7c9d7fda2091b1c98174844194963b9c5)
@@ -151,8 +152,8 @@ Scaled:
 3. learning_rate 1e-3 --> 3e-4
 4. n_embed 32 --> 384
 5. n_head 4 --> 6
-5. n_layer 1 --> 6
-6. drop_out = 0.2
+6. n_layer 3 --> 6
+7. dropout = 0.2
 ```
 Go as if that Angelo. Thou know'st; there well.
 
@@ -161,4 +162,4 @@ There's your leave as kight o' the house,
 ```
 step 4800: train loss 1.0624, val loss 1.5138
 
-Now that sounded like sweet Shakespere!
+Now that sounded like sweet Shakespeare!
